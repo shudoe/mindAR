@@ -3,46 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>師格旅人 - 多角並存版</title>
+    <title>師格旅人 - 32 騎士集結版</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
     <style>
-        #status { position: absolute; top: 0; width: 100%; background: rgba(0,0,0,0.8); color: #00ff00; padding: 12px; z-index: 100; text-align: center; font-weight: bold; }
+        #status { 
+            position: absolute; top: 0; width: 100%; 
+            background: rgba(0,0,0,0.8); color: #00ff00; 
+            padding: 12px; z-index: 100; text-align: center;
+            font-family: "Microsoft JhengHei", sans-serif;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div id="status">系統啟動中...</div>
 
-    <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 4;" 
-             renderer="colorManagement: true, physicallyCorrectLights" 
-             vr-mode-ui="enabled: false"
-             gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
+    <a-scene 
+        id="ar-scene"
+        mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
+        renderer="colorManagement: true, physicallyCorrectLights" 
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
         
         <a-assets></a-assets> 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity id="target0" mindar-image-target="targetIndex: 0"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
-        <a-entity id="target1" mindar-image-target="targetIndex: 1"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
-        <a-entity id="target2" mindar-image-target="targetIndex: 2"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
-        <a-entity id="target3" mindar-image-target="targetIndex: 3"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
-    </a-scene>
+        </a-scene>
 
     <script>
         const status = document.querySelector('#status');
-        const modelList = ["./assets/00.glb", "./assets/01.glb", "./assets/02.glb", "./assets/03.glb"];
+        const sceneEl = document.querySelector('#ar-scene');
+        const totalModels = 32; // 預設 32 隻
 
-        document.querySelector('a-scene').addEventListener("arReady", () => { status.innerText = "系統就緒！可同時顯示多個騎士"; });
+        // 1. 自動產生 32 個 AR 錨點與模型實體
+        for (let i = 0; i < totalModels; i++) {
+            const entity = document.createElement('a-entity');
+            entity.setAttribute('id', `target${i}`);
+            entity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+            
+            const model = document.createElement('a-gltf-model');
+            model.classList.add('model-entity');
+            model.setAttribute('rotation', '90 0 0');
+            model.setAttribute('scale', '2 2 2'); // 統一 2 倍大
+            
+            entity.appendChild(model);
+            sceneEl.appendChild(entity);
 
-        modelList.forEach((filePath, index) => {
-            const targetEl = document.querySelector(`#target${index}`);
-            const modelEl = targetEl.querySelector('.model-entity');
-
-            targetEl.addEventListener("targetFound", () => {
-                status.innerText = `發現騎士 ${index}！`;
-                if (!modelEl.getAttribute('src')) {
-                    modelEl.setAttribute('src', filePath);
+            // 2. 監聽偵測事件
+            entity.addEventListener("targetFound", () => {
+                const modelId = i < 10 ? `0${i}` : `${i}`; // 補零，例如 00, 01...31
+                const filePath = `./assets/${modelId}.glb`;
+                
+                status.innerText = `發現騎士 ${modelId}！`;
+                
+                if (!model.getAttribute('src')) {
+                    status.innerText = `正在召喚騎士 ${modelId}...`;
+                    model.setAttribute('src', filePath);
                 }
             });
+
+            entity.addEventListener("targetLost", () => {
+                status.innerText = "掃描中，請對準卡片";
+            });
+        }
+
+        sceneEl.addEventListener("arReady", () => {
+            status.innerText = "系統就緒！支援 32 隻同時顯示";
         });
     </script>
 </body>
