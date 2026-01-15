@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>師格旅人 - 32騎士物理合力版</title>
+    <title>動物騎士 - 全軍集結</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
     <style>
@@ -12,21 +12,25 @@
             background: rgba(0,0,0,0.8); color: #FFD700; 
             padding: 12px; z-index: 100; text-align: center;
             font-family: sans-serif; font-weight: bold;
+            letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
-    <div id="status">全軍集結中...</div>
+    <div id="status">準備召喚動物騎士...</div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights, antialias: false, precision: lowp" 
+        renderer="colorManagement: true, physicallyCorrectLights: true, antialias: true" 
         vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false"
-        gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
+        device-orientation-permission-ui="enabled: false">
         
-        <a-assets></a-assets> 
+        <a-assets id="asset-library"></a-assets> 
+
+        <a-entity light="type: ambient; intensity: 1.2;"></a-entity>
+        <a-entity light="type: directional; intensity: 1; position: 0 1 1"></a-entity>
+
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity id="effect-container"></a-entity>
     </a-scene>
@@ -34,95 +38,87 @@
     <script>
         const status = document.querySelector('#status');
         const sceneEl = document.querySelector('#ar-scene');
-        const effectContainer = document.querySelector('#effect-container');
         const totalModels = 32;
-        const activeModels = new Set(); // 改用 Set 防止重複加入
+        const activeModels = new Map();
 
-        // 產生特效與震動
-        function triggerCollisionEffects(pos1, pos2) {
-            const midPoint = new THREE.Vector3().addVectors(pos1, pos2).multiplyScalar(0.5);
-            const spark = document.createElement('a-sphere');
-            spark.setAttribute('radius', '0.04');
-            spark.setAttribute('color', '#FFD700');
-            spark.setAttribute('shader', 'flat');
-            spark.setAttribute('position', midPoint);
-            spark.setAttribute('animation', 'property: scale; to: 4 4 4; dur: 200; easing: easeOutQuad');
-            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 200; easing: easeOutQuad');
-            effectContainer.appendChild(spark);
-            setTimeout(() => { if(spark.parentNode) effectContainer.removeChild(spark); }, 250);
-            if (navigator.vibrate) navigator.vibrate(50);
-        }
-
-        // 動態生成 32 個 Entity
+        // 1. 動態生成 32 個 Entity
         for (let i = 0; i < totalModels; i++) {
-            const entity = document.createElement('a-entity');
-            entity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+            const modelId = i.toString().padStart(2, '0');
+            const target = document.createElement('a-entity');
+            target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
             
             const model = document.createElement('a-gltf-model');
+            model.setAttribute('src', `./assets/${modelId}.glb`);
+            
+            // 根據你的需求，統一設定比例為 0.8
+            model.setAttribute('scale', '0.8 0.8 0.8');
             model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '1.2 1.2 1.2');
             model.setAttribute('position', '0 0 0');
             
-            entity.appendChild(model);
-            sceneEl.appendChild(entity);
+            target.appendChild(model);
+            sceneEl.appendChild(target);
 
-            entity.addEventListener("targetFound", () => {
-                const modelId = i < 10 ? `0${i}` : `${i}`;
-                if (!model.getAttribute('src')) model.setAttribute('src', `./assets/${modelId}.glb`);
-                activeModels.add(model); // Set 會自動處理重複
+            // 監聽掃描事件
+            target.addEventListener("targetFound", () => {
+                activeModels.set(i, { target, model });
                 status.innerText = `騎士 ${modelId} 已就緒`;
             });
 
-            entity.addEventListener("targetLost", () => {
-                activeModels.delete(model);
-                status.innerText = "搜尋目標中...";
+            target.addEventListener("targetLost", () => {
+                activeModels.delete(i);
+                if (activeModels.size === 0) status.innerText = "搜尋目標中...";
             });
         }
 
-        // =========================================
-        //  合力物理引擎：解決「只能顯示兩隻」的問題
-        // =========================================
+        // 2. 特效與震動
+        function triggerCollisionEffects(worldPos) {
+            const spark = document.createElement('a-sphere');
+            spark.setAttribute('radius', '0.03');
+            spark.setAttribute('color', '#FFD700');
+            spark.setAttribute('position', worldPos);
+            spark.setAttribute('animation', 'property: scale; to: 3 3 3; dur: 150; easing: easeOutQuad');
+            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 150; easing: easeOutQuad');
+            
+            document.querySelector('#effect-container').appendChild(spark);
+            setTimeout(() => { if(spark.parentNode) spark.parentNode.removeChild(spark); }, 200);
+            if (navigator.vibrate) navigator.vibrate(30);
+        }
+
+        // 3. 物理引擎：處理角色碰撞排斥
         AFRAME.registerComponent('collision-engine', {
             tick: function () {
-                const models = Array.from(activeModels);
-                if (models.length < 2) return;
+                const entries = Array.from(activeModels.entries());
+                if (entries.length < 2) return;
 
-                const minDistance = 0.5;
-                const repulsionStrength = 0.08;
+                const minDistance = 0.45; // 碰撞範圍
+                const repulsionStrength = 0.06; // 排斥力
                 
-                // 儲存每一隻騎士在這一幀累積的「總推力」
-                const forces = models.map(() => new THREE.Vector3(0, 0, 0));
+                entries.forEach(([idx1, obj1]) => {
+                    let totalPush = new THREE.Vector3(0, 0, 0);
+                    const p1 = new THREE.Vector3();
+                    obj1.model.object3D.getWorldPosition(p1);
 
-                for (let i = 0; i < models.length; i++) {
-                    for (let j = i + 1; j < models.length; j++) {
-                        const p1 = new THREE.Vector3();
+                    entries.forEach(([idx2, obj2]) => {
+                        if (idx1 === idx2) return;
                         const p2 = new THREE.Vector3();
-                        models[i].object3D.getWorldPosition(p1);
-                        models[j].object3D.getWorldPosition(p2);
-
+                        obj2.model.object3D.getWorldPosition(p2);
+                        
                         const dist = p1.distanceTo(p2);
-
-                        if (dist < minDistance) {
-                            // 計算方向向量並累積推力
-                            const force = new THREE.Vector3().subVectors(p1, p2).normalize().multiplyScalar(repulsionStrength);
-                            forces[i].add(force);
-                            forces[j].sub(force);
-                            
-                            triggerCollisionEffects(p1, p2);
+                        if (dist < minDistance && dist > 0.01) {
+                            const diff = new THREE.Vector3().subVectors(p1, p2);
+                            diff.y = 0; 
+                            const force = diff.normalize().multiplyScalar(repulsionStrength * (minDistance - dist));
+                            totalPush.add(force);
+                            if (Math.random() > 0.96) triggerCollisionEffects(p1.clone().add(p2).multiplyScalar(0.5));
                         }
-                    }
-                }
+                    });
 
-                // 最後統一應用位移，並加入歸位力
-                models.forEach((model, index) => {
-                    const currentPos = model.getAttribute('position');
-                    const netForce = forces[index];
-
-                    // 套用合力，並在沒有推力時緩慢回歸中心
-                    model.setAttribute('position', {
-                        x: (currentPos.x + netForce.x) * 0.95,
+                    const currentPos = obj1.model.object3D.position;
+                    // 平滑回彈至圖卡中心
+                    obj1.model.setAttribute('position', {
+                        x: (currentPos.x + totalPush.x) * 0.92,
                         y: 0,
-                        z: (currentPos.z + netForce.z) * 0.95
+                        z: (currentPos.z + totalPush.z) * 0.92
                     });
                 });
             }
