@@ -3,40 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>動物西洋棋</title>
+    <title>師格旅人 - 碰撞火花特效版</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
     <style>
         #status { 
             position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.8); color: #00ff00; 
+            background: rgba(0,0,0,0.8); color: #FFD700; /* 改成金色字體 */
             padding: 12px; z-index: 100; text-align: center;
             font-family: sans-serif; font-weight: bold;
+            text-shadow: 1px 1px 2px black;
         }
     </style>
 </head>
 <body>
-    <div id="status">防撞系統初始化中...</div>
+    <div id="status">特效系統載入中...</div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights, antialias: false" 
+        renderer="colorManagement: true, physicallyCorrectLights, antialias: false, precision: lowp" 
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
         gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
         
         <a-assets></a-assets> 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        
+        <a-entity id="effect-container"></a-entity>
+
     </a-scene>
 
     <script>
         const status = document.querySelector('#status');
         const sceneEl = document.querySelector('#ar-scene');
+        const effectContainer = document.querySelector('#effect-container');
         const totalModels = 32;
-        const activeModels = []; // 紀錄目前畫面上可見的模型
+        const activeModels = [];
+        let lastCollisionTime = 0; // 用於限制震動頻率
 
-        // 1. 動態產生 32 個角色
+        // =========================================
+        //  特效函式：產生火花與震動
+        // =========================================
+        function triggerCollisionEffects(pos1, pos2) {
+            const now = Date.now();
+            
+            // 1. 觸覺回饋 (Vibration API)
+            // 設定 200ms 的冷卻時間，避免手機震個不停
+            if (navigator.vibrate && (now - lastCollisionTime > 200)) {
+                navigator.vibrate(100); // 震動 100 毫秒
+                lastCollisionTime = now;
+            }
+
+            // 2. 視覺回饋 (火花閃光)
+            // 計算兩個碰撞點的中間位置
+            const midPoint = new THREE.Vector3().addVectors(pos1, pos2).multiplyScalar(0.5);
+            
+            // 創建一個暫時的發光球體來模擬火花
+            const spark = document.createElement('a-sphere');
+            spark.setAttribute('radius', '0.05');
+            spark.setAttribute('color', '#FFD700'); // 金黃色
+            spark.setAttribute('shader', 'flat'); // 不受光照影響，看起來更亮
+            spark.setAttribute('position', midPoint);
+            
+            // 加入動畫：快速變大並消失
+            spark.setAttribute('animation__scale', {
+                property: 'scale',
+                to: '3 3 3',
+                dur: 300,
+                easing: 'easeOutQuad'
+            });
+            spark.setAttribute('animation__fade', {
+                property: 'opacity',
+                from: '1',
+                to: '0',
+                dur: 300,
+                easing: 'easeOutQuad'
+            });
+
+            effectContainer.appendChild(spark);
+
+            // 300ms 動畫結束後，移除這個暫時的火花物件
+            setTimeout(() => {
+                effectContainer.removeChild(spark);
+            }, 350);
+        }
+
+
+        // =========================================
+        //  核心邏輯：動態生成與物理計算
+        // =========================================
         for (let i = 0; i < totalModels; i++) {
             const entity = document.createElement('a-entity');
             entity.setAttribute('id', `target${i}`);
@@ -44,41 +100,38 @@
             
             const model = document.createElement('a-gltf-model');
             model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '1.2 1.2 1.2'); // 調整為更適合的大小
+            model.setAttribute('scale', '1.2 1.2 1.2');
             model.setAttribute('position', '0 0 0');
             
             entity.appendChild(model);
             sceneEl.appendChild(entity);
 
-            // 監聽偵測
             entity.addEventListener("targetFound", () => {
                 const modelId = i < 10 ? `0${i}` : `${i}`;
                 if (!model.getAttribute('src')) {
                     model.setAttribute('src', `./assets/${modelId}.glb`);
                 }
-                activeModels.push(model); // 加入物理計算清單
-                status.innerText = `發現騎士 ${modelId}`;
+                activeModels.push(model);
+                status.innerText = `騎士 ${modelId} 參戰！`;
             });
 
             entity.addEventListener("targetLost", () => {
                 const index = activeModels.indexOf(model);
                 if (index > -1) activeModels.splice(index, 1);
-                status.innerText = "掃描中...";
+                status.innerText = "搜尋戰場中...";
             });
         }
 
-        // 2. 物理防撞邏輯：每秒執行 60 次的位置修正
         AFRAME.registerComponent('collision-avoidance', {
             tick: function () {
-                const minDistance = 0.6; // 角色間的最小安全距離
-                const repulsionForce = 0.05; // 彈開的力量強度
+                const minDistance = 0.55; // 稍微縮小觸發距離，讓碰撞感更強
+                const repulsionForce = 0.06;
 
                 for (let i = 0; i < activeModels.length; i++) {
                     for (let j = i + 1; j < activeModels.length; j++) {
                         const m1 = activeModels[i];
                         const m2 = activeModels[j];
                         
-                        // 取得兩個角色在 3D 空間的世界座標
                         const p1 = new THREE.Vector3();
                         const p2 = new THREE.Vector3();
                         m1.object3D.getWorldPosition(p1);
@@ -86,17 +139,18 @@
 
                         const distance = p1.distanceTo(p2);
 
-                        // 如果距離太近，計算推開的方向向量
                         if (distance < minDistance) {
+                            // *** 觸發特效 ***
+                            triggerCollisionEffects(p1, p2);
+
+                            // 物理推開邏輯
                             const direction = new THREE.Vector3().subVectors(p1, p2).normalize();
-                            
-                            // 修正座標 (讓它們稍微位移一點)
                             const currentPos1 = m1.getAttribute('position') || {x:0, y:0, z:0};
                             const currentPos2 = m2.getAttribute('position') || {x:0, y:0, z:0};
 
                             m1.setAttribute('position', {
                                 x: currentPos1.x + direction.x * repulsionForce,
-                                y: currentPos1.y, // 保持高度不變
+                                y: currentPos1.y,
                                 z: currentPos1.z + direction.z * repulsionForce
                             });
 
@@ -106,12 +160,8 @@
                                 z: currentPos2.z - direction.z * repulsionForce
                             });
                         } else {
-                            // 距離夠遠時，慢慢恢復到卡片中心 (0, 0, 0)
-                            const resetPos = (p) => {
-                                p.x *= 0.95;
-                                p.z *= 0.95;
-                                return p;
-                            };
+                            // 彈回邏輯
+                            const resetPos = (p) => { p.x *= 0.92; p.z *= 0.92; return p; };
                             m1.setAttribute('position', resetPos(m1.getAttribute('position')));
                         }
                     }
@@ -119,11 +169,10 @@
             }
         });
 
-        // 啟動防撞組件
         sceneEl.setAttribute('collision-avoidance', '');
 
         sceneEl.addEventListener("arReady", () => {
-            status.innerText = "物理防撞系統已就緒 (Scale 1.2)";
+            status.innerText = "戰場系統就緒 (碰撞特效開啟)";
         });
     </script>
 </body>
