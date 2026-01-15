@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>師格旅人 - 32 騎士集結版</title>
+    <title>動物西洋棋</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
     <style>
@@ -11,66 +11,119 @@
             position: absolute; top: 0; width: 100%; 
             background: rgba(0,0,0,0.8); color: #00ff00; 
             padding: 12px; z-index: 100; text-align: center;
-            font-family: "Microsoft JhengHei", sans-serif;
-            font-weight: bold;
+            font-family: sans-serif; font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div id="status">系統啟動中...</div>
+    <div id="status">防撞系統初始化中...</div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights" 
+        renderer="colorManagement: true, physicallyCorrectLights, antialias: false" 
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
         gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
         
         <a-assets></a-assets> 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-        </a-scene>
+    </a-scene>
 
     <script>
         const status = document.querySelector('#status');
         const sceneEl = document.querySelector('#ar-scene');
-        const totalModels = 32; // 預設 32 隻
+        const totalModels = 32;
+        const activeModels = []; // 紀錄目前畫面上可見的模型
 
-        // 1. 自動產生 32 個 AR 錨點與模型實體
+        // 1. 動態產生 32 個角色
         for (let i = 0; i < totalModels; i++) {
             const entity = document.createElement('a-entity');
             entity.setAttribute('id', `target${i}`);
             entity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
             
             const model = document.createElement('a-gltf-model');
-            model.classList.add('model-entity');
             model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '2 2 2'); // 統一 2 倍大
+            model.setAttribute('scale', '1.2 1.2 1.2'); // 調整為更適合的大小
+            model.setAttribute('position', '0 0 0');
             
             entity.appendChild(model);
             sceneEl.appendChild(entity);
 
-            // 2. 監聽偵測事件
+            // 監聽偵測
             entity.addEventListener("targetFound", () => {
-                const modelId = i < 10 ? `0${i}` : `${i}`; // 補零，例如 00, 01...31
-                const filePath = `./assets/${modelId}.glb`;
-                
-                status.innerText = `發現騎士 ${modelId}！`;
-                
+                const modelId = i < 10 ? `0${i}` : `${i}`;
                 if (!model.getAttribute('src')) {
-                    status.innerText = `正在召喚騎士 ${modelId}...`;
-                    model.setAttribute('src', filePath);
+                    model.setAttribute('src', `./assets/${modelId}.glb`);
                 }
+                activeModels.push(model); // 加入物理計算清單
+                status.innerText = `發現騎士 ${modelId}`;
             });
 
             entity.addEventListener("targetLost", () => {
-                status.innerText = "掃描中，請對準卡片";
+                const index = activeModels.indexOf(model);
+                if (index > -1) activeModels.splice(index, 1);
+                status.innerText = "掃描中...";
             });
         }
 
+        // 2. 物理防撞邏輯：每秒執行 60 次的位置修正
+        AFRAME.registerComponent('collision-avoidance', {
+            tick: function () {
+                const minDistance = 0.6; // 角色間的最小安全距離
+                const repulsionForce = 0.05; // 彈開的力量強度
+
+                for (let i = 0; i < activeModels.length; i++) {
+                    for (let j = i + 1; j < activeModels.length; j++) {
+                        const m1 = activeModels[i];
+                        const m2 = activeModels[j];
+                        
+                        // 取得兩個角色在 3D 空間的世界座標
+                        const p1 = new THREE.Vector3();
+                        const p2 = new THREE.Vector3();
+                        m1.object3D.getWorldPosition(p1);
+                        m2.object3D.getWorldPosition(p2);
+
+                        const distance = p1.distanceTo(p2);
+
+                        // 如果距離太近，計算推開的方向向量
+                        if (distance < minDistance) {
+                            const direction = new THREE.Vector3().subVectors(p1, p2).normalize();
+                            
+                            // 修正座標 (讓它們稍微位移一點)
+                            const currentPos1 = m1.getAttribute('position') || {x:0, y:0, z:0};
+                            const currentPos2 = m2.getAttribute('position') || {x:0, y:0, z:0};
+
+                            m1.setAttribute('position', {
+                                x: currentPos1.x + direction.x * repulsionForce,
+                                y: currentPos1.y, // 保持高度不變
+                                z: currentPos1.z + direction.z * repulsionForce
+                            });
+
+                            m2.setAttribute('position', {
+                                x: currentPos2.x - direction.x * repulsionForce,
+                                y: currentPos2.y,
+                                z: currentPos2.z - direction.z * repulsionForce
+                            });
+                        } else {
+                            // 距離夠遠時，慢慢恢復到卡片中心 (0, 0, 0)
+                            const resetPos = (p) => {
+                                p.x *= 0.95;
+                                p.z *= 0.95;
+                                return p;
+                            };
+                            m1.setAttribute('position', resetPos(m1.getAttribute('position')));
+                        }
+                    }
+                }
+            }
+        });
+
+        // 啟動防撞組件
+        sceneEl.setAttribute('collision-avoidance', '');
+
         sceneEl.addEventListener("arReady", () => {
-            status.innerText = "系統就緒！支援 32 隻同時顯示";
+            status.innerText = "物理防撞系統已就緒 (Scale 1.2)";
         });
     </script>
 </body>
