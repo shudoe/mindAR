@@ -3,126 +3,177 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>動物騎士</title>
+    <title>動物騎士：全軍集結</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
+    
     <style>
+        body { margin: 0; overflow: hidden; }
         #status { 
             position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.8); color: #FFD700; 
-            padding: 12px; z-index: 100; text-align: center;
-            font-family: sans-serif; font-weight: bold;
+            background: rgba(0,0,0,0.85); color: #FFD700; 
+            padding: 15px; z-index: 100; text-align: center;
+            font-family: "Microsoft JhengHei", sans-serif;
+            font-size: 18px; border-bottom: 2px solid #FFD700;
         }
     </style>
 </head>
 <body>
-    <div id="status">全軍集結中...</div>
+    <div id="status">正在初始化召喚陣...</div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights, antialias: false, precision: lowp" 
+        renderer="colorManagement: true, physicallyCorrectLights, antialias: true" 
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
-        gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
+        cursor="fuse: false; rayOrigin: mouse;"
+        raycaster="objects: .knight-model;">
         
-        <a-assets></a-assets> 
+        <a-assets>
+            </a-assets> 
+
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity id="effect-container"></a-entity>
-    </a-scene>
+
+        </a-scene>
 
     <script>
         const status = document.querySelector('#status');
         const sceneEl = document.querySelector('#ar-scene');
         const effectContainer = document.querySelector('#effect-container');
-        const totalModels = 32;
-        const activeModels = new Set(); // 改用 Set 防止重複加入
+        const activeModels = new Map();
 
-        // 產生特效與震動
-        function triggerCollisionEffects(pos1, pos2) {
-            const midPoint = new THREE.Vector3().addVectors(pos1, pos2).multiplyScalar(0.5);
-            const spark = document.createElement('a-sphere');
-            spark.setAttribute('radius', '0.04');
-            spark.setAttribute('color', '#FFD700');
-            spark.setAttribute('shader', 'flat');
-            spark.setAttribute('position', midPoint);
-            spark.setAttribute('animation', 'property: scale; to: 4 4 4; dur: 200; easing: easeOutQuad');
-            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 200; easing: easeOutQuad');
-            effectContainer.appendChild(spark);
-            setTimeout(() => { if(spark.parentNode) effectContainer.removeChild(spark); }, 250);
-            if (navigator.vibrate) navigator.vibrate(50);
-        }
+        // =========================================
+        // 組件：騎士互動邏輯 (點擊與拖曳)
+        // =========================================
+        AFRAME.registerComponent('knight-logic', {
+            init: function () {
+                this.isDragging = false;
+                this.el.classList.add('knight-model'); // 讓 Raycaster 抓得到
+                
+                // 1. 點擊跳躍
+                this.el.addEventListener('click', (e) => {
+                    this.jump();
+                });
 
-        // 動態生成 32 個 Entity
-        for (let i = 0; i < totalModels; i++) {
-            const entity = document.createElement('a-entity');
-            entity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+                // 2. 拖曳開始
+                this.el.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    status.innerText = "正在搬移騎士...";
+                });
+
+                // 3. 拖曳結束
+                window.addEventListener('mouseup', () => {
+                    if(this.isDragging) {
+                        this.isDragging = false;
+                        status.innerText = "騎士已就位";
+                    }
+                });
+
+                // 4. 拖曳移動 (基於滑鼠/手指位移)
+                window.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    
+                    // 根據滑鼠移動量調整模型在圖卡上的相對位置 (XZ 平面)
+                    const currentPos = this.el.getAttribute('position');
+                    const moveSpeed = 0.005; 
+                    this.el.setAttribute('position', {
+                        x: currentPos.x + e.movementX * moveSpeed,
+                        y: currentPos.y,
+                        z: currentPos.z + e.movementY * moveSpeed
+                    });
+                });
+            },
+
+            jump: function () {
+                // 使用 A-Frame 動畫實現 Y 軸跳躍
+                const currentPos = this.el.object3D.position;
+                this.el.setAttribute('animation__jump', {
+                    property: 'position',
+                    to: `${currentPos.x} 0.6 ${currentPos.z}`,
+                    dur: 250,
+                    easing: 'easeOutCubic',
+                    dir: 'alternate',
+                    loop: 1
+                });
+                if (navigator.vibrate) navigator.vibrate(20);
+            }
+        });
+
+        // =========================================
+        // 動態生成 32 個標靶與模型
+        // =========================================
+        for (let i = 0; i < 32; i++) {
+            const targetEntity = document.createElement('a-entity');
+            targetEntity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
             
             const model = document.createElement('a-gltf-model');
             model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '1.2 1.2 1.2');
-            model.setAttribute('position', '0 0 0');
+            model.setAttribute('scale', '0.7 0.7 0.7'); // 稍微縮小以容納更多角色
+            model.setAttribute('knight-logic', ''); 
+            model.setAttribute('gltf-model', `dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/`);
             
-            entity.appendChild(model);
-            sceneEl.appendChild(entity);
+            targetEntity.appendChild(model);
+            sceneEl.appendChild(targetEntity);
 
-            entity.addEventListener("targetFound", () => {
-                const modelId = i < 10 ? `0${i}` : `${i}`;
-                if (!model.getAttribute('src')) model.setAttribute('src', `./assets/${modelId}.glb`);
-                activeModels.add(model); // Set 會自動處理重複
-                status.innerText = `騎士 ${modelId} 已就緒`;
+            const modelId = i.toString().padStart(2, '0');
+
+            targetEntity.addEventListener("targetFound", () => {
+                if (!model.getAttribute('src')) {
+                    model.setAttribute('src', `./assets/${modelId}.glb`);
+                }
+                activeModels.set(i, model);
+                status.innerText = `騎士 ${modelId} 已進入戰場`;
             });
 
-            entity.addEventListener("targetLost", () => {
-                activeModels.delete(model);
-                status.innerText = "搜尋目標中...";
+            targetEntity.addEventListener("targetLost", () => {
+                activeModels.delete(i);
+                if (activeModels.size === 0) status.innerText = "搜尋召喚陣中...";
             });
         }
 
         // =========================================
-        //  合力物理引擎：解決「只能顯示兩隻」的問題
+        // 物理引擎：合力排斥與自動歸位
         // =========================================
         AFRAME.registerComponent('collision-engine', {
             tick: function () {
-                const models = Array.from(activeModels);
+                const models = Array.from(activeModels.values());
                 if (models.length < 2) return;
 
-                const minDistance = 0.5;
-                const repulsionStrength = 0.08;
+                const minDistance = 0.45; // 碰撞半徑
+                const repulsionScale = 0.06; // 排斥力強度
                 
-                // 儲存每一隻騎士在這一幀累積的「總推力」
-                const forces = models.map(() => new THREE.Vector3(0, 0, 0));
+                models.forEach((m1, idx1) => {
+                    // 如果正在被拖曳，暫停該角色的物理回彈
+                    const logic = m1.components['knight-logic'];
+                    if (logic && logic.isDragging) return;
 
-                for (let i = 0; i < models.length; i++) {
-                    for (let j = i + 1; j < models.length; j++) {
-                        const p1 = new THREE.Vector3();
+                    let netForce = new THREE.Vector3(0, 0, 0);
+                    const p1 = new THREE.Vector3();
+                    m1.object3D.getWorldPosition(p1);
+
+                    models.forEach((m2, idx2) => {
+                        if (idx1 === idx2) return;
+                        
                         const p2 = new THREE.Vector3();
-                        models[i].object3D.getWorldPosition(p1);
-                        models[j].object3D.getWorldPosition(p2);
-
+                        m2.object3D.getWorldPosition(p2);
+                        
                         const dist = p1.distanceTo(p2);
-
-                        if (dist < minDistance) {
-                            // 計算方向向量並累積推力
-                            const force = new THREE.Vector3().subVectors(p1, p2).normalize().multiplyScalar(repulsionStrength);
-                            forces[i].add(force);
-                            forces[j].sub(force);
-                            
-                            triggerCollisionEffects(p1, p2);
+                        if (dist < minDistance && dist > 0.01) {
+                            const forceDir = new THREE.Vector3().subVectors(p1, p2);
+                            forceDir.y = 0; // 僅在平面排斥
+                            const strength = (minDistance - dist) * repulsionScale;
+                            netForce.add(forceDir.normalize().multiplyScalar(strength));
                         }
-                    }
-                }
+                    });
 
-                // 最後統一應用位移，並加入歸位力
-                models.forEach((model, index) => {
-                    const currentPos = model.getAttribute('position');
-                    const netForce = forces[index];
-
-                    // 套用合力，並在沒有推力時緩慢回歸中心
-                    model.setAttribute('position', {
-                        x: (currentPos.x + netForce.x) * 0.95,
-                        y: 0,
-                        z: (currentPos.z + netForce.z) * 0.95
+                    // 應用位移並加入緩慢歸位的彈力 (0.9 係數)
+                    const pos = m1.getAttribute('position');
+                    m1.setAttribute('position', {
+                        x: (pos.x + netForce.x) * 0.93,
+                        y: pos.y, // 保持動畫中的 Y 軸高度
+                        z: (pos.z + netForce.z) * 0.93
                     });
                 });
             }
