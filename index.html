@@ -1,141 +1,44 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>動物騎士 - 32全軍集結 (穩定版)</title>
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
-    <style>
-        #status { 
-            position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.8); color: #FFD700; 
-            padding: 12px; z-index: 100; text-align: center;
-            font-family: sans-serif; font-weight: bold;
-            letter-spacing: 1px; transition: 0.3s;
-        }
-        .missing-file { color: #FF4500 !important; } /* 檔案遺失時的警告顏色 */
-    </style>
-</head>
-<body>
-    <div id="status">正在初始化騎士系統...</div>
+<a-scene ...>
+    <a-assets id="asset-library">
+        </a-assets>
 
-    <a-scene 
-        id="ar-scene"
-        mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights, antialias: true" 
-        vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false">
+    <a-entity light="type: ambient; intensity: 1.5;"></a-entity>
+    <a-entity light="type: directional; intensity: 1; position: 0 1 1"></a-entity>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+</a-scene>
+
+<script>
+    // ... 前面的設定不變 ...
+
+    for (let i = 0; i < totalModels; i++) {
+        const modelId = i.toString().padStart(2, '0');
+        const target = document.createElement('a-entity');
+        target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+
+        // 2. 加入一個測試用的紅色方塊 (高度 0.1m)
+        // 如果掃描到圖案有看到紅方塊，代表 AR 運作正常，是模型檔案問題
+        const testBox = document.createElement('a-box');
+        testBox.setAttribute('size', '0.1 0.1 0.1');
+        testBox.setAttribute('color', 'red');
+        testBox.setAttribute('position', '0 0.1 0');
+        target.appendChild(testBox);
+
+        const model = document.createElement('a-gltf-model');
+        model.setAttribute('src', `./assets/${modelId}.glb`);
         
-        <a-assets id="asset-library"></a-assets> 
+        // 3. 調整初始旋轉與縮放
+        model.setAttribute('rotation', '90 0 0'); 
+        model.setAttribute('scale', '1 1 1'); // 先嘗試 1:1 比例
+        model.setAttribute('position', '0 0 0');
+        
+        target.appendChild(model);
+        sceneEl.appendChild(target);
 
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity id="effect-container"></a-entity>
-    </a-scene>
-
-    <script>
-        const status = document.querySelector('#status');
-        const sceneEl = document.querySelector('#ar-scene');
-        const assetLibrary = document.querySelector('#asset-library');
-        const totalModels = 32;
-        const activeModels = new Map();
-        const fileErrors = new Set(); // 記錄載入失敗的編號
-
-        // 1. 動態生成 32 個騎士實體
-        for (let i = 0; i < totalModels; i++) {
-            const modelId = i.toString().padStart(2, '0');
-
-            // 建立 AR 追蹤實體
-            const target = document.createElement('a-entity');
-            target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
-            
-            const model = document.createElement('a-gltf-model');
-            model.setAttribute('src', `./assets/${modelId}.glb`);
-            model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '0.8 0.8 0.8');
-            model.setAttribute('position', '0 0 0');
-            
-            // 【關鍵】監聽載入失敗事件
-            model.addEventListener('model-error', () => {
-                fileErrors.add(modelId);
-                console.error(`無法讀取模型: ./assets/${modelId}.glb`);
-            });
-
-            target.appendChild(model);
-            sceneEl.appendChild(target);
-
-            // 監聽掃描事件
-            target.addEventListener("targetFound", () => {
-                if (fileErrors.has(modelId)) {
-                    status.innerText = `⚠️ 騎士 ${modelId} 召喚失敗 (遺失 .glb 檔案)`;
-                    status.classList.add('missing-file');
-                } else {
-                    activeModels.set(i, { target, model });
-                    status.innerText = `騎士 ${modelId} 已就緒 (共 ${activeModels.size} 位)`;
-                    status.classList.remove('missing-file');
-                }
-            });
-
-            target.addEventListener("targetLost", () => {
-                activeModels.delete(i);
-                status.classList.remove('missing-file');
-                status.innerText = activeModels.size > 0 ? `剩餘 ${activeModels.size} 位騎士` : "搜尋目標中...";
-            });
-        }
-
-        // 2. 碰撞特效
-        function triggerCollisionEffects(worldPos) {
-            const spark = document.createElement('a-sphere');
-            spark.setAttribute('radius', '0.03');
-            spark.setAttribute('color', '#FFD700');
-            spark.setAttribute('position', worldPos);
-            spark.setAttribute('animation', 'property: scale; to: 3 3 3; dur: 150; easing: easeOutQuad');
-            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 150; easing: easeOutQuad');
-            document.querySelector('#effect-container').appendChild(spark);
-            setTimeout(() => { if(spark.parentNode) spark.parentNode.removeChild(spark); }, 200);
-            if (navigator.vibrate) navigator.vibrate(30);
-        }
-
-        // 3. 物理引擎
-        AFRAME.registerComponent('collision-engine', {
-            tick: function () {
-                const entries = Array.from(activeModels.entries());
-                if (entries.length < 2) return;
-
-                const minDistance = 0.4;
-                const repulsionStrength = 0.05;
-                
-                entries.forEach(([idx1, obj1]) => {
-                    let totalPush = new THREE.Vector3(0, 0, 0);
-                    const p1 = new THREE.Vector3();
-                    obj1.model.object3D.getWorldPosition(p1);
-
-                    entries.forEach(([idx2, obj2]) => {
-                        if (idx1 === idx2) return;
-                        const p2 = new THREE.Vector3();
-                        obj2.model.object3D.getWorldPosition(p2);
-                        
-                        const dist = p1.distanceTo(p2);
-                        if (dist < minDistance && dist > 0.01) {
-                            const diff = new THREE.Vector3().subVectors(p1, p2);
-                            diff.y = 0; 
-                            const force = diff.normalize().multiplyScalar(repulsionStrength * (minDistance - dist));
-                            totalPush.add(force);
-                            if (Math.random() > 0.97) triggerCollisionEffects(p1.clone().add(p2).multiplyScalar(0.5));
-                        }
-                    });
-
-                    const currentPos = obj1.model.object3D.position;
-                    obj1.model.setAttribute('position', {
-                        x: (currentPos.x + totalPush.x) * 0.92,
-                        y: 0,
-                        z: (currentPos.z + totalPush.z) * 0.92
-                    });
-                });
-            }
+        // 監聽載入情況
+        model.addEventListener('model-loaded', () => {
+            console.log(`${modelId} 模型載入成功！`);
+            testBox.setAttribute('visible', 'false'); // 模型載入成功就隱藏測試方塊
         });
-
-        sceneEl.setAttribute('collision-engine', '');
-    </script>
-</body>
-</html>
+    }
+</script>
