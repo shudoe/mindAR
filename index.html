@@ -3,177 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>動物騎士：全軍集結</title>
+    <title>動物騎士：穩定互動版</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
-    
     <style>
         body { margin: 0; overflow: hidden; }
         #status { 
             position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.85); color: #FFD700; 
-            padding: 15px; z-index: 100; text-align: center;
-            font-family: "Microsoft JhengHei", sans-serif;
-            font-size: 18px; border-bottom: 2px solid #FFD700;
+            background: rgba(0,0,0,0.8); color: #FFD700; 
+            padding: 12px; z-index: 100; text-align: center;
+            font-family: sans-serif; font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div id="status">正在初始化召喚陣...</div>
+    <div id="status">準備中，請對準圖卡...</div>
 
     <a-scene 
         id="ar-scene"
         mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights, antialias: true" 
+        renderer="colorManagement: true, physicallyCorrectLights" 
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
         cursor="fuse: false; rayOrigin: mouse;"
-        raycaster="objects: .knight-model;">
+        raycaster="objects: .clickable">
         
-        <a-assets>
-            </a-assets> 
-
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity id="effect-container"></a-entity>
-
-        </a-scene>
+    </a-scene>
 
     <script>
         const status = document.querySelector('#status');
         const sceneEl = document.querySelector('#ar-scene');
-        const effectContainer = document.querySelector('#effect-container');
         const activeModels = new Map();
 
-        // =========================================
-        // 組件：騎士互動邏輯 (點擊與拖曳)
-        // =========================================
+        // --- 1. 互動組件 ---
         AFRAME.registerComponent('knight-logic', {
             init: function () {
                 this.isDragging = false;
-                this.el.classList.add('knight-model'); // 讓 Raycaster 抓得到
-                
-                // 1. 點擊跳躍
-                this.el.addEventListener('click', (e) => {
+                this.el.classList.add('clickable'); 
+
+                // 點擊跳躍
+                this.el.addEventListener('click', () => {
                     this.jump();
                 });
 
-                // 2. 拖曳開始
-                this.el.addEventListener('mousedown', (e) => {
-                    this.isDragging = true;
-                    status.innerText = "正在搬移騎士...";
+                // 拖曳開始
+                this.el.addEventListener('mousedown', () => { 
+                    this.isDragging = true; 
+                    status.innerText = "抓取騎士中...";
                 });
 
-                // 3. 拖曳結束
-                window.addEventListener('mouseup', () => {
+                // 拖曳結束
+                window.addEventListener('mouseup', () => { 
                     if(this.isDragging) {
                         this.isDragging = false;
                         status.innerText = "騎士已就位";
                     }
                 });
 
-                // 4. 拖曳移動 (基於滑鼠/手指位移)
+                // 拖曳移動
                 window.addEventListener('mousemove', (e) => {
                     if (!this.isDragging) return;
-                    
-                    // 根據滑鼠移動量調整模型在圖卡上的相對位置 (XZ 平面)
-                    const currentPos = this.el.getAttribute('position');
-                    const moveSpeed = 0.005; 
+                    const pos = this.el.getAttribute('position');
+                    // 微調移動感應度
                     this.el.setAttribute('position', {
-                        x: currentPos.x + e.movementX * moveSpeed,
-                        y: currentPos.y,
-                        z: currentPos.z + e.movementY * moveSpeed
+                        x: pos.x + e.movementX * 0.002,
+                        y: pos.y,
+                        z: pos.z + e.movementY * 0.002
                     });
                 });
             },
-
             jump: function () {
-                // 使用 A-Frame 動畫實現 Y 軸跳躍
-                const currentPos = this.el.object3D.position;
+                const p = this.el.object3D.position;
                 this.el.setAttribute('animation__jump', {
                     property: 'position',
-                    to: `${currentPos.x} 0.6 ${currentPos.z}`,
-                    dur: 250,
-                    easing: 'easeOutCubic',
+                    to: `${p.x} 0.5 ${p.z}`,
+                    dur: 300,
+                    easing: 'easeOutQuad',
                     dir: 'alternate',
                     loop: 1
                 });
-                if (navigator.vibrate) navigator.vibrate(20);
             }
         });
 
-        // =========================================
-        // 動態生成 32 個標靶與模型
-        // =========================================
+        // --- 2. 生成 32 隻角色 ---
         for (let i = 0; i < 32; i++) {
-            const targetEntity = document.createElement('a-entity');
-            targetEntity.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+            const target = document.createElement('a-entity');
+            target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
             
             const model = document.createElement('a-gltf-model');
             model.setAttribute('rotation', '90 0 0');
-            model.setAttribute('scale', '0.7 0.7 0.7'); // 稍微縮小以容納更多角色
+            model.setAttribute('scale', '0.8 0.8 0.8');
             model.setAttribute('knight-logic', ''); 
-            model.setAttribute('gltf-model', `dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/`);
             
-            targetEntity.appendChild(model);
-            sceneEl.appendChild(targetEntity);
+            target.appendChild(model);
+            sceneEl.appendChild(target);
 
             const modelId = i.toString().padStart(2, '0');
 
-            targetEntity.addEventListener("targetFound", () => {
+            target.addEventListener("targetFound", () => {
+                console.log(`找到圖卡 Index: ${i}`);
                 if (!model.getAttribute('src')) {
                     model.setAttribute('src', `./assets/${modelId}.glb`);
                 }
                 activeModels.set(i, model);
-                status.innerText = `騎士 ${modelId} 已進入戰場`;
+                status.innerText = `騎士 ${modelId} 參戰！`;
             });
 
-            targetEntity.addEventListener("targetLost", () => {
+            target.addEventListener("targetLost", () => {
                 activeModels.delete(i);
-                if (activeModels.size === 0) status.innerText = "搜尋召喚陣中...";
             });
         }
 
-        // =========================================
-        // 物理引擎：合力排斥與自動歸位
-        // =========================================
+        // --- 3. 物理引擎 (修正座標歪曲問題) ---
         AFRAME.registerComponent('collision-engine', {
             tick: function () {
                 const models = Array.from(activeModels.values());
                 if (models.length < 2) return;
 
-                const minDistance = 0.45; // 碰撞半徑
-                const repulsionScale = 0.06; // 排斥力強度
-                
-                models.forEach((m1, idx1) => {
-                    // 如果正在被拖曳，暫停該角色的物理回彈
+                const minDist = 0.4;
+                const pushStrength = 0.02;
+
+                models.forEach((m1) => {
                     const logic = m1.components['knight-logic'];
                     if (logic && logic.isDragging) return;
 
-                    let netForce = new THREE.Vector3(0, 0, 0);
+                    let force = new THREE.Vector3(0, 0, 0);
                     const p1 = new THREE.Vector3();
                     m1.object3D.getWorldPosition(p1);
 
-                    models.forEach((m2, idx2) => {
-                        if (idx1 === idx2) return;
-                        
+                    models.forEach((m2) => {
+                        if (m1 === m2) return;
                         const p2 = new THREE.Vector3();
                         m2.object3D.getWorldPosition(p2);
                         
-                        const dist = p1.distanceTo(p2);
-                        if (dist < minDistance && dist > 0.01) {
-                            const forceDir = new THREE.Vector3().subVectors(p1, p2);
-                            forceDir.y = 0; // 僅在平面排斥
-                            const strength = (minDistance - dist) * repulsionScale;
-                            netForce.add(forceDir.normalize().multiplyScalar(strength));
+                        const d = p1.distanceTo(p2);
+                        if (d < minDist && d > 0.01) {
+                            const dir = new THREE.Vector3().subVectors(p1, p2);
+                            dir.y = 0;
+                            force.add(dir.normalize().multiplyScalar(pushStrength));
                         }
                     });
 
-                    // 應用位移並加入緩慢歸位的彈力 (0.9 係數)
-                    const pos = m1.getAttribute('position');
+                    const cur = m1.getAttribute('position');
+                    // 只有在有推力或偏移時才更新，並確保歸位
                     m1.setAttribute('position', {
-                        x: (pos.x + netForce.x) * 0.93,
-                        y: pos.y, // 保持動畫中的 Y 軸高度
-                        z: (pos.z + netForce.z) * 0.93
+                        x: (cur.x + force.x) * 0.95,
+                        y: cur.y,
+                        z: (cur.z + force.z) * 0.95
                     });
                 });
             }
