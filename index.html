@@ -3,84 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>師格旅人 - 四大騎士 (Scale 2 版本)</title>
+    <title>師格旅人 - 多角並存版</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
     <style>
-        #status { 
-            position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.8); color: #00ff00; 
-            padding: 12px; z-index: 100; text-align: center;
-            font-family: "Microsoft JhengHei", sans-serif;
-            font-weight: bold;
-        }
+        #status { position: absolute; top: 0; width: 100%; background: rgba(0,0,0,0.8); color: #00ff00; padding: 12px; z-index: 100; text-align: center; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="status">系統啟動中...</div>
 
-    <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes;" 
+    <a-scene mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 4;" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false"
-             device-orientation-permission-ui="enabled: false"
              gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
         
         <a-assets></a-assets> 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity class="target-entity" id="target0" mindar-image-target="targetIndex: 0">
-            <a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model>
-        </a-entity>
-
-        <a-entity class="target-entity" id="target1" mindar-image-target="targetIndex: 1">
-            <a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model>
-        </a-entity>
-
-        <a-entity class="target-entity" id="target2" mindar-image-target="targetIndex: 2">
-            <a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model>
-        </a-entity>
-
-        <a-entity class="target-entity" id="target3" mindar-image-target="targetIndex: 3">
-            <a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model>
-        </a-entity>
-
+        <a-entity id="target0" mindar-image-target="targetIndex: 0"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
+        <a-entity id="target1" mindar-image-target="targetIndex: 1"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
+        <a-entity id="target2" mindar-image-target="targetIndex: 2"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
+        <a-entity id="target3" mindar-image-target="targetIndex: 3"><a-gltf-model class="model-entity" rotation="90 0 0" scale="2 2 2"></a-gltf-model></a-entity>
     </a-scene>
 
     <script>
         const status = document.querySelector('#status');
-        const sceneEl = document.querySelector('a-scene');
+        const modelList = ["./assets/00.glb", "./assets/01.glb", "./assets/02.glb", "./assets/03.glb"];
 
-        const modelList = [
-            "./assets/00.glb",
-            "./assets/01.glb",
-            "./assets/02.glb",
-            "./assets/03.glb"
-        ];
-
-        sceneEl.addEventListener("arReady", () => {
-            status.innerText = "系統就緒！請掃描卡片";
-        });
+        document.querySelector('a-scene').addEventListener("arReady", () => { status.innerText = "系統就緒！可同時顯示多個騎士"; });
 
         modelList.forEach((filePath, index) => {
             const targetEl = document.querySelector(`#target${index}`);
             const modelEl = targetEl.querySelector('.model-entity');
 
             targetEl.addEventListener("targetFound", () => {
-                console.log("Found targetIndex:", index); 
-                status.innerText = `偵測到目標 ${index}！載入中...`;
-                
+                status.innerText = `發現騎士 ${index}！`;
                 if (!modelEl.getAttribute('src')) {
                     modelEl.setAttribute('src', filePath);
-                    modelEl.addEventListener('model-loaded', () => {
-                        status.innerText = `騎士 ${index} 召喚成功！`;
-                    });
-                } else {
-                    status.innerText = `顯示騎士 ${index} 中`;
                 }
-            });
-
-            targetEl.addEventListener("targetLost", () => {
-                status.innerText = "目標遺失，請重新掃描";
             });
         });
     </script>
