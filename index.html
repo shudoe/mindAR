@@ -1,157 +1,142 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>動物騎士 AR - 32位集結</title>
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
-    
-    <style>
-        #status { 
-            position: absolute; top: 0; width: 100%; 
-            background: rgba(0,0,0,0.85); color: #FFD700; 
-            padding: 15px; z-index: 100; text-align: center;
-            font-family: "Microsoft JhengHei", sans-serif; font-weight: bold;
-            border-bottom: 2px solid #FFD700;
-        }
-        .error { color: #FF4500 !important; }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動物騎士 - 全軍集結</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.0/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+        #status { 
+            position: absolute; top: 0; width: 100%; 
+            background: rgba(0,0,0,0.8); color: #FFD700; 
+            padding: 12px; z-index: 100; text-align: center;
+            font-family: sans-serif; font-weight: bold;
+            letter-spacing: 1px;
+        }
+    </style>
 </head>
 <body>
-    <div id="status">系統初始化中...</div>
+    <div id="status">準備召喚動物騎士...</div>
 
-    <a-scene 
-        id="ar-scene"
-        mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
-        renderer="colorManagement: true, physicallyCorrectLights: true, antialias: true" 
-        vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false">
-        
-        <a-assets id="asset-library">
-            </a-assets> 
+    <a-scene 
+        id="ar-scene"
+        mindar-image="imageTargetSrc: ./assets/targets.mind; autoStart: true; uiLoading: no; uiScanning: yes; maxTrack: 32;" 
+        renderer="colorManagement: true, physicallyCorrectLights, antialias: true" 
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.4.1/">
+        
+        <a-assets>
+            </a-assets> 
 
-        <a-entity light="type: ambient; intensity: 1.2;"></a-entity>
-        <a-entity light="type: directional; intensity: 0.8; position: 0 1 1"></a-entity>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity id="effect-container"></a-entity>
+    </a-scene>
 
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        
-        <a-entity id="effect-container"></a-entity>
-    </a-scene>
+    <script>
+        const status = document.querySelector('#status');
+        const sceneEl = document.querySelector('#ar-scene');
+        const effectContainer = document.querySelector('#effect-container');
+        const totalModels = 32;
+        const activeModels = new Map(); // 使用 Map 存儲 targetIndex -> model 物件
 
-    <script>
-        const status = document.querySelector('#status');
-        const sceneEl = document.querySelector('#ar-scene');
-        const assetLibrary = document.querySelector('#asset-library');
-        const totalModels = 32;
-        const activeModels = new Map();
+        // 產生特效與震動
+        function triggerCollisionEffects(worldPos) {
+            const spark = document.createElement('a-sphere');
+            spark.setAttribute('radius', '0.03');
+            spark.setAttribute('color', '#FFD700');
+            spark.setAttribute('position', worldPos);
+            spark.setAttribute('animation', 'property: scale; to: 3 3 3; dur: 150; easing: easeOutQuad');
+            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 150; easing: easeOutQuad');
+            
+            effectContainer.appendChild(spark);
+            setTimeout(() => { if(spark.parentNode) effectContainer.removeChild(spark); }, 200);
+            if (navigator.vibrate) navigator.vibrate(30);
+        }
 
-        // --- 1. 動態生成 32 個騎士實體 ---
-        for (let i = 0; i < totalModels; i++) {
-            const modelId = i.toString().padStart(2, '0'); // 生成 "00", "01" ... "31"
+        // 動態生成 32 個 Entity
+        for (let i = 0; i < totalModels; i++) {
+            const target = document.createElement('a-entity');
+            target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
+            
+            const model = document.createElement('a-gltf-model');
+            // 修正：使用初始旋轉，確保模型垂直於卡片
+            model.setAttribute('rotation', '90 0 0');
+            model.setAttribute('scale', '0.8 0.8 0.8'); // 縮小一點，防止 32 隻太擠
+            model.setAttribute('position', '0 0 0');
+            
+            target.appendChild(model);
+            sceneEl.appendChild(target);
 
-            // 建立圖卡追蹤目標
-            const target = document.createElement('a-entity');
-            target.setAttribute('mindar-image-target', `targetIndex: ${i}`);
-            
-            // 偵錯用紅方塊：如果看到紅方塊但沒看到模型，表示是 GLB 檔案或縮放問題
-            const debugBox = document.createElement('a-box');
-            debugBox.setAttribute('size', '0.1 0.1 0.1');
-            debugBox.setAttribute('color', 'red');
-            debugBox.setAttribute('position', '0 0.05 0');
-            debugBox.setAttribute('opacity', '0.5');
-            target.appendChild(debugBox);
+            const modelId = i.toString().padStart(2, '0'); // 生成 00, 01, 02...31
 
-            // 載入 3D 模型
-            const model = document.createElement('a-gltf-model');
-            model.setAttribute('src', `./assets/${modelId}.glb`);
-            model.setAttribute('rotation', '90 0 0'); // 讓模型垂直於圖卡
-            model.setAttribute('scale', '0.5 0.5 0.5'); // ⚠️ 如果模型太小，請嘗試改為 5 5 5
-            model.setAttribute('position', '0 0 0');
-            
-            target.appendChild(model);
-            sceneEl.appendChild(target);
+            target.addEventListener("targetFound", () => {
+                // 如果檔案還沒準備好，這行會 404 但不會中斷程式
+                if (!model.getAttribute('src')) {
+                    model.setAttribute('src', `./assets/${modelId}.glb`);
+                }
+                activeModels.set(i, { target, model });
+                status.innerText = `騎士 ${modelId} 已就緒`;
+            });
 
-            // 事件監聽：載入成功
-            model.addEventListener('model-loaded', () => {
-                debugBox.setAttribute('visible', 'false'); // 看到模型了，隱藏方塊
-                console.log(`騎士 ${modelId} 載入成功`);
-            });
+            target.addEventListener("targetLost", () => {
+                activeModels.delete(i);
+                if (activeModels.size === 0) status.innerText = "搜尋目標中...";
+            });
+        }
 
-            // 事件監聽：載入失敗
-            model.addEventListener('model-error', (e) => {
-                console.error(`騎士 ${modelId} 檔案遺失或路徑錯誤`, e);
-                status.innerText = `⚠️ 檔案遺失: ./assets/${modelId}.glb`;
-                status.classList.add('error');
-            });
+        // =========================================
+        // 改進版物理引擎：處理 32 隻角色的合力
+        // =========================================
+        AFRAME.registerComponent('collision-engine', {
+            tick: function () {
+                const entries = Array.from(activeModels.entries());
+                if (entries.length < 2) return;
 
-            // 事件監聽：掃描到圖卡
-            target.addEventListener("targetFound", () => {
-                activeModels.set(i, { target, model });
-                status.innerText = `召喚成功：騎士 ${modelId} (目前場上: ${activeModels.size})`;
-                status.classList.remove('error');
-            });
+                const minDistance = 0.4; // 碰撞觸發距離
+                const repulsionStrength = 0.05; // 推力強度
+                
+                // 1. 計算所有作用力
+                entries.forEach(([idx1, obj1]) => {
+                    let totalPush = new THREE.Vector3(0, 0, 0);
+                    const p1 = new THREE.Vector3();
+                    obj1.model.object3D.getWorldPosition(p1);
 
-            // 事件監聽：圖卡消失
-            target.addEventListener("targetLost", () => {
-                activeModels.delete(i);
-                status.innerText = activeModels.size > 0 ? `場上剩餘 ${activeModels.size} 位騎士` : "正在尋找圖卡...";
-            });
-        }
+                    entries.forEach(([idx2, obj2]) => {
+                        if (idx1 === idx2) return;
 
-        // --- 2. 碰撞特效函數 ---
-        function triggerCollisionEffects(pos) {
-            const spark = document.createElement('a-sphere');
-            spark.setAttribute('radius', '0.05');
-            spark.setAttribute('color', '#FFD700');
-            spark.setAttribute('position', pos);
-            spark.setAttribute('animation', 'property: scale; to: 2 2 2; dur: 200; easing: easeOutQuad');
-            spark.setAttribute('animation__fade', 'property: opacity; from: 1; to: 0; dur: 200; easing: easeOutQuad');
-            document.querySelector('#effect-container').appendChild(spark);
-            setTimeout(() => { if(spark.parentNode) spark.parentNode.removeChild(spark); }, 250);
-            if (navigator.vibrate) navigator.vibrate(50);
-        }
+                        const p2 = new THREE.Vector3();
+                        obj2.model.object3D.getWorldPosition(p2);
+                        
+                        const dist = p1.distanceTo(p2);
+                        if (dist < minDistance && dist > 0.01) {
+                            // 計算排斥方向 (僅在 XZ 平面，避免模型飛天)
+                            const diff = new THREE.Vector3().subVectors(p1, p2);
+                            diff.y = 0; 
+                            const force = diff.normalize().multiplyScalar(repulsionStrength * (minDistance - dist));
+                            totalPush.add(force);
+                            
+                            // 隨機觸發特效 (避免每一幀都噴火花導致閃爍)
+                            if (Math.random() > 0.95) triggerCollisionEffects(p1.clone().add(p2).multiplyScalar(0.5));
+                        }
+                    });
 
-        // --- 3. 物理碰撞引擎 ---
-        AFRAME.registerComponent('collision-engine', {
-            tick: function () {
-                const entries = Array.from(activeModels.entries());
-                if (entries.length < 2) return;
+                    // 2. 應用位移
+                    const currentPos = obj1.model.object3D.position;
+                    // 將世界空間的推力轉回局部空間（簡易版：直接作用於 position，並加入回彈力）
+                    // 乘上 0.9 是為了讓模型慢慢滑回圖卡中心
+                    obj1.model.setAttribute('position', {
+                        x: (currentPos.x + totalPush.x) * 0.92,
+                        y: 0,
+                        z: (currentPos.z + totalPush.z) * 0.92
+                    });
+                });
+            }
+        });
 
-                const minDistance = 0.5; // 碰撞感應範圍
-                const repulsion = 0.08;  // 推開的力道
-                
-                entries.forEach(([idx1, obj1]) => {
-                    let force = new THREE.Vector3(0, 0, 0);
-                    const p1 = new THREE.Vector3();
-                    obj1.model.object3D.getWorldPosition(p1);
-
-                    entries.forEach(([idx2, obj2]) => {
-                        if (idx1 === idx2) return;
-                        const p2 = new THREE.Vector3();
-                        obj2.model.object3D.getWorldPosition(p2);
-                        
-                        const dist = p1.distanceTo(p2);
-                        if (dist < minDistance && dist > 0.01) {
-                            const diff = new THREE.Vector3().subVectors(p1, p2);
-                            diff.y = 0; 
-                            force.add(diff.normalize().multiplyScalar(repulsion * (minDistance - dist)));
-                            if (Math.random() > 0.98) triggerCollisionEffects(p1.clone().add(p2).multiplyScalar(0.5));
-                        }
-                    });
-
-                    const pos = obj1.model.object3D.position;
-                    // 回彈效果：模型會試圖回到圖卡中心
-                    obj1.model.setAttribute('position', {
-                        x: (pos.x + force.x) * 0.9,
-                        y: 0,
-                        z: (pos.z + force.z) * 0.9
-                    });
-                });
-            }
-        });
-
-        sceneEl.setAttribute('collision-engine', '');
-    </script>
+        sceneEl.setAttribute('collision-engine', '');
+    </script>
 </body>
 </html>
+
